@@ -1,0 +1,688 @@
+#define _CRT_SECURE_NO_WARNINGS // Suppress C4996 warning for localtime
+
+#include <iostream>    
+#include <vector>       
+#include <string>       
+#include <map>        
+#include <fstream>      
+#include <iomanip>    
+#include <limits>       
+#include <chrono>       
+#include <ctime>        
+#include <sstream>      
+#include <tuple>        
+
+using namespace std; 
+
+// Clears the input buffer to prevent issues with mixed cin and getline
+void clearInputBuffer() {
+    cin.ignore(numeric_limits<streamsize>::max(), '\n');
+}
+
+// Gets a string input and ensures it's not empty
+string getValidatedStringInput(const string& prompt) {
+    string value;
+    while (true) {
+        cout << prompt;
+        getline(cin, value);
+        if (value.empty()) {
+            cout << "Input cannot be empty. Please try again.\n";
+        }
+        else {
+            return value;
+        }
+    }
+}
+
+// Gets a double input and handles invalid numeric entries
+double getValidatedDoubleInput(const string& prompt) {
+    double value;
+    while (true) {
+        cout << prompt;
+        cin >> value;
+        if (cin.fail()) {
+            cout << "Invalid input. Please enter a number.\n";
+            cin.clear();
+            clearInputBuffer();
+        }
+        else {
+            clearInputBuffer(); 
+            return value;
+        }
+    }
+}
+
+// Gets an integer input and handles invalid numeric entries
+int getValidatedIntInput(const string& prompt) {
+    int value;
+    while (true) {
+        cout << prompt;
+        cin >> value;
+        if (cin.fail()) {
+            cout << "Invalid input. Please enter an integer.\n";
+            cin.clear();
+            clearInputBuffer();
+        }
+        else {
+            clearInputBuffer(); 
+            return value;
+        }
+    }
+}
+
+// Helper to get current timestamp as a string
+string getCurrentTimestamp() {
+    auto now = chrono::system_clock::now();
+    time_t now_c = chrono::system_clock::to_time_t(now);
+    
+    tm* ltm = localtime(&now_c);
+
+    stringstream ss;
+    ss << put_time(ltm, "%Y-%m-%d %H:%M:%S");
+    return ss.str();
+}
+
+// Forward declarations to resolve circular dependencies
+class Account;
+class Customer;
+
+// Transaction Class
+class Transaction {
+private:
+    string transactionID;
+    string accountNumber;
+    string type;         
+    double amount;
+    string timestamp;
+    string relatedAccountNum; 
+
+public:
+    // Constructor
+    Transaction(string id, string accNum, string t, double amt, string ts, string relatedAcc = "")
+        : transactionID(id), accountNumber(accNum), type(t), amount(amt), timestamp(ts), relatedAccountNum(relatedAcc) {}
+
+    // Getters
+    string getTransactionID() const { return transactionID; }
+    string getAccountNumber() const { return accountNumber; }
+    string getType() const { return type; }
+    double getAmount() const { return amount; }
+    string getTimestamp() const { return timestamp; }
+    string getRelatedAccountNum() const { return relatedAccountNum; }
+
+    // Display transaction details
+    void display() const {
+        cout << "  ID: " << setw(5) << left << transactionID
+            << " | Type: " << setw(10) << left << type
+            << " | Amount: " << setw(10) << right << fixed << setprecision(2) << amount
+            << " | Date: " << timestamp;
+        if (!relatedAccountNum.empty()) {
+            cout << " | Related Account: " << relatedAccountNum;
+        }
+        cout << endl;
+    }
+
+    // Convert Transaction object to a string for file storage
+    string toString() const {
+        return transactionID + "|" + accountNumber + "|" + type + "|" +
+            to_string(amount) + "|" + timestamp + "|" + relatedAccountNum;
+    }
+
+    // Static method to create a Transaction object from a string (for file loading)
+    static Transaction fromString(const string& data) {
+        stringstream ss(data);
+        string id, accNum, typeStr, amountStr, timestampStr, relatedAcc;
+        getline(ss, id, '|');
+        getline(ss, accNum, '|');
+        getline(ss, typeStr, '|');
+        getline(ss, amountStr, '|');
+        getline(ss, timestampStr, '|');
+        getline(ss, relatedAcc, '|'); 
+
+        return Transaction(id, accNum, typeStr, stod(amountStr), timestampStr, relatedAcc);
+    }
+};
+
+// Account Class
+class Account {
+private:
+    string accountNumber;
+    string customerID;
+    double balance;
+    string accountType; // e.g., "Savings", "Checking"
+
+public:
+    // Constructor
+    Account(string accNum, string custID, double bal, string type)
+        : accountNumber(accNum), customerID(custID), balance(bal), accountType(type) {}
+
+    // Getters
+    string getAccountNumber() const { return accountNumber; }
+    string getCustomerID() const { return customerID; }
+    double getBalance() const { return balance; }
+    string getAccountType() const { return accountType; }
+
+    // Deposit funds
+    bool deposit(double amount) {
+        if (amount <= 0) {
+            cout << "Deposit amount must be positive.\n";
+            return false;
+        }
+        balance += amount;
+        return true;
+    }
+
+    // Withdraw funds
+    bool withdraw(double amount) {
+        if (amount <= 0) {
+            cout << "Withdrawal amount must be positive.\n";
+            return false;
+        }
+        if (balance < amount) {
+            cout << "Insufficient funds.\n";
+            return false;
+        }
+        balance -= amount;
+        return true;
+    }
+
+    // Display account information
+    void display() const {
+        cout << fixed << setprecision(2);
+        cout << "  Account No: " << setw(10) << left << accountNumber
+            << " | Type: " << setw(10) << left << accountType
+            << " | Balance: $" << setw(10) << right << balance << endl;
+    }
+
+    // Convert Account object to a string for file storage
+    string toString() const {
+        return accountNumber + "|" + customerID + "|" + to_string(balance) + "|" + accountType;
+    }
+
+    // Static method to create an Account object from a string (for file loading)
+    static Account fromString(const string& data) {
+        stringstream ss(data);
+        string accNum, custID, balStr, type;
+        getline(ss, accNum, '|');
+        getline(ss, custID, '|');
+        getline(ss, balStr, '|');
+        getline(ss, type, '|');
+        return Account(accNum, custID, stod(balStr), type);
+    }
+};
+
+// Customer Class
+class Customer {
+private:
+    string customerID;
+    string name;
+    string address;
+    string contactInfo;
+    vector<string> accountNumbers; 
+
+public:
+    // Constructor
+    Customer(string id, string n, string addr, string contact)
+        : customerID(id), name(n), address(addr), contactInfo(contact) {}
+
+    // Getters
+    string getCustomerID() const { return customerID; }
+    string getName() const { return name; }
+    string getAddress() const { return address; }
+    string getContactInfo() const { return contactInfo; }
+    const vector<string>& getAccountNumbers() const { return accountNumbers; }
+
+    // Add an account number to this customer's list
+    void addAccountNumber(const string& accNum) {
+        accountNumbers.push_back(accNum);
+    }
+
+    // Remove an account number (e.g., if account is closed)
+    void removeAccountNumber(const string& accNum) {
+        for (size_t i = 0; i < accountNumbers.size(); ++i) { 
+            if (accountNumbers[i] == accNum) {
+                accountNumbers.erase(accountNumbers.begin() + static_cast<vector<string>::difference_type>(i)); 
+                break;
+            }
+        }
+    }
+
+    // Display customer information
+    void display() const {
+        cout << "  Customer ID: " << setw(10) << left << customerID
+            << " | Name: " << setw(20) << left << name
+            << " | Address: " << setw(20) << left << address
+            << " | Contact: " << contactInfo << endl;
+    }
+
+    // Convert Customer object to a string for file storage
+    string toString() const {
+        string accNumsStr = "";
+        for (size_t i = 0; i < accountNumbers.size(); ++i) { 
+            accNumsStr += accountNumbers[i];
+            if (i < accountNumbers.size() - 1) {
+                accNumsStr += ","; 
+            }
+        }
+        return customerID + "|" + name + "|" + address + "|" + contactInfo + "|" + accNumsStr;
+    }
+
+    // Static method to create a Customer object from a string (for file loading)
+    static Customer fromString(const string& data) {
+        stringstream ss(data);
+        string id, n, addr, contact, accNumsStr;
+        getline(ss, id, '|');
+        getline(ss, n, '|');
+        getline(ss, addr, '|');
+        getline(ss, contact, '|');
+        getline(ss, accNumsStr, '|');
+
+        Customer cust(id, n, addr, contact);
+        stringstream accSs(accNumsStr);
+        string accNum;
+        while (getline(accSs, accNum, ',')) {
+            if (!accNum.empty()) {
+                cust.addAccountNumber(accNum);
+            }
+        }
+        return cust;
+    }
+};
+
+// --- Banking System Class (Manager) ---
+class BankingSystem {
+private:
+    map<string, Customer> customers; 
+    map<string, Account> accounts;  
+    vector<Transaction> transactions; 
+
+    // Counters for unique IDs
+    long long nextCustomerID = 1000;
+    long long nextAccountNumber = 100000;
+    long long nextTransactionID = 1;
+
+    // File names for persistence
+    const string CUSTOMER_FILE = "customers.txt";
+    const string ACCOUNT_FILE = "accounts.txt";
+    const string TRANSACTION_FILE = "transactions.txt";
+    const string ID_TRACKER_FILE = "id_tracker.txt"; 
+
+public:
+    // Constructor
+    BankingSystem() {
+        loadIDs(); 
+        loadData(); 
+    }
+
+    // Destructor to save data on exit
+    ~BankingSystem() {
+        saveData();
+        saveIDs();
+    }
+
+    // --- ID Management ---
+    void loadIDs() {
+        ifstream inFile(ID_TRACKER_FILE);
+        if (inFile.is_open()) {
+            inFile >> nextCustomerID >> nextAccountNumber >> nextTransactionID;
+            inFile.close();
+            cout << "IDs loaded.\n";
+        }
+        else {
+            cout << "ID tracker file not found. Starting IDs from defaults.\n";
+        }
+    }
+
+    void saveIDs() {
+        ofstream outFile(ID_TRACKER_FILE, ios::trunc);
+        if (outFile.is_open()) {
+            outFile << nextCustomerID << "\n" << nextAccountNumber << "\n" << nextTransactionID;
+            outFile.close();
+        }
+        else {
+            cerr << "Error: Could not save ID tracker file.\n";
+        }
+    }
+
+    // --- Data Persistence ---
+    void loadData() {
+        ifstream custFile(CUSTOMER_FILE);
+        if (custFile.is_open()) {
+            string line;
+            while (getline(custFile, line)) {
+                Customer c = Customer::fromString(line);
+                customers.emplace(c.getCustomerID(), std::move(c));
+            }
+            custFile.close();
+            cout << "Customers loaded.\n";
+        }
+        else {
+            cout << "Customer file not found. Starting fresh.\n";
+        }
+
+        // Load Accounts
+        ifstream accFile(ACCOUNT_FILE);
+        if (accFile.is_open()) {
+            string line;
+            while (getline(accFile, line)) {
+                Account a = Account::fromString(line);
+                accounts.emplace(a.getAccountNumber(), std::move(a));
+            }
+            accFile.close();
+            cout << "Accounts loaded.\n";
+        }
+        else {
+            cout << "Account file not found. Starting fresh.\n";
+        }
+
+        // Load Transactions
+        ifstream transFile(TRANSACTION_FILE);
+        if (transFile.is_open()) {
+            string line;
+            while (getline(transFile, line)) {
+                transactions.push_back(Transaction::fromString(line));
+            }
+            transFile.close();
+            cout << "Transactions loaded.\n";
+        }
+        else {
+            cout << "Transaction file not found. Starting fresh.\n";
+        }
+    }
+
+    void saveData() {
+        // Save Customers
+        ofstream custFile(CUSTOMER_FILE, ios::trunc);
+        if (custFile.is_open()) {
+            for (const auto& pair : customers) {
+                custFile << pair.second.toString() << "\n";
+            }
+            custFile.close();
+            cout << "Customers saved.\n";
+        }
+        else {
+            cerr << "Error: Could not save customer data.\n";
+        }
+
+        // Save Accounts
+        ofstream accFile(ACCOUNT_FILE, ios::trunc);
+        if (accFile.is_open()) {
+            for (const auto& pair : accounts) {
+                accFile << pair.second.toString() << "\n";
+            }
+            accFile.close();
+            cout << "Accounts saved.\n";
+        }
+        else {
+            cerr << "Error: Could not save account data.\n";
+        }
+
+        // Save Transactions
+        ofstream transFile(TRANSACTION_FILE, ios::trunc);
+        if (transFile.is_open()) {
+            for (const auto& trans : transactions) {
+                transFile << trans.toString() << "\n";
+            }
+            transFile.close();
+            cout << "Transactions saved.\n";
+        }
+        else {
+            cerr << "Error: Could not save transaction data.\n";
+        }
+    }
+
+    // --- Customer Management ---
+    void createCustomer() {
+        cout << "\n--- Create New Customer ---\n";
+        string name = getValidatedStringInput("Enter customer name: ");
+        string address = getValidatedStringInput("Enter customer address: ");
+        string contact = getValidatedStringInput("Enter customer contact info: ");
+
+        string newID = to_string(nextCustomerID++);
+        customers.emplace(newID, Customer(newID, name, address, contact));
+        cout << "Customer created successfully! ID: " << newID << endl;
+    }
+
+    void viewAllCustomers() const {
+        cout << "\n--- All Customers ---\n";
+        if (customers.empty()) {
+            cout << "No customers registered yet.\n";
+            return;
+        }
+        for (const auto& pair : customers) {
+            pair.second.display();
+        }
+    }
+
+    // --- Account Management ---
+    void createAccount() {
+        cout << "\n--- Create New Account ---\n";
+        string customerID = getValidatedStringInput("Enter Customer ID for the new account: ");
+
+        if (customers.find(customerID) == customers.end()) {
+            cout << "Error: Customer with ID " << customerID << " not found.\n";
+            return;
+        }
+
+        string accountType;
+        while (true) {
+            accountType = getValidatedStringInput("Enter account type (Savings/Checking): ");
+            if (accountType == "Savings" || accountType == "Checking") {
+                break;
+            }
+            else {
+                cout << "Invalid account type. Please enter 'Savings' or 'Checking'.\n";
+            }
+        }
+
+        double initialDeposit = getValidatedDoubleInput("Enter initial deposit amount: $");
+        if (initialDeposit < 0) {
+            cout << "Initial deposit cannot be negative. Setting to 0.\n";
+            initialDeposit = 0;
+        }
+
+        string newAccNum = to_string(nextAccountNumber++);
+        accounts.emplace(newAccNum, Account(newAccNum, customerID, initialDeposit, accountType));
+        customers.at(customerID).addAccountNumber(newAccNum); 
+
+        // Log initial deposit as a transaction
+        if (initialDeposit > 0) {
+            transactions.push_back(Transaction(to_string(nextTransactionID++), newAccNum, "Deposit", initialDeposit, getCurrentTimestamp()));
+        }
+
+        cout << "Account created successfully! Account No: " << newAccNum << endl;
+    }
+
+    void viewCustomerAccounts(const string& customerID) {
+        cout << "\n--- Accounts for Customer ID: " << customerID << " ---\n";
+        if (customers.find(customerID) == customers.end()) {
+            cout << "Customer with ID " << customerID << " not found.\n";
+            return;
+        }
+
+        const vector<string>& custAccNums = customers.at(customerID).getAccountNumbers();
+        if (custAccNums.empty()) {
+            cout << "This customer has no accounts.\n";
+            return;
+        }
+
+        for (const string& accNum : custAccNums) {
+            if (accounts.count(accNum)) {
+                accounts.at(accNum).display();
+            }
+            else {
+                cerr << "Warning: Account " << accNum << " linked to customer " << customerID << " not found in accounts map.\n";
+            }
+        }
+    }
+
+    void viewAccountDetails() {
+        cout << "\n--- View Account Details ---\n";
+        string accNum = getValidatedStringInput("Enter Account Number: ");
+
+        if (accounts.find(accNum) == accounts.end()) {
+            cout << "Error: Account with number " << accNum << " not found.\n";
+            return;
+        }
+
+        accounts.at(accNum).display(); 
+
+        // Display associated customer details
+        string custID = accounts.at(accNum).getCustomerID();
+        if (customers.count(custID)) {
+            cout << "Associated Customer:\n";
+            customers.at(custID).display();
+        }
+        else {
+            cerr << "Warning: Customer for account " << accNum << " not found.\n";
+        }
+
+        // Display recent transactions
+        viewTransactions(accNum);
+    }
+
+    // --- Transaction Features ---
+    void performDeposit() {
+        cout << "\n--- Perform Deposit ---\n";
+        string accNum = getValidatedStringInput("Enter Account Number to deposit into: ");
+        double amount = getValidatedDoubleInput("Enter amount to deposit: $");
+
+        if (accounts.find(accNum) == accounts.end()) {
+            cout << "Error: Account with number " << accNum << " not found.\n";
+            return;
+        }
+
+        if (accounts.at(accNum).deposit(amount)) {
+            transactions.push_back(Transaction(to_string(nextTransactionID++), accNum, "Deposit", amount, getCurrentTimestamp()));
+            cout << "Deposit successful! New balance: $" << fixed << setprecision(2) << accounts.at(accNum).getBalance() << endl;
+        }
+    }
+
+    void performWithdrawal() {
+        cout << "\n--- Perform Withdrawal ---\n";
+        string accNum = getValidatedStringInput("Enter Account Number to withdraw from: ");
+        double amount = getValidatedDoubleInput("Enter amount to withdraw: $");
+
+        if (accounts.find(accNum) == accounts.end()) {
+            cout << "Error: Account with number " << accNum << " not found.\n";
+            return;
+        }
+
+        if (accounts.at(accNum).withdraw(amount)) {
+            transactions.push_back(Transaction(to_string(nextTransactionID++), accNum, "Withdrawal", amount, getCurrentTimestamp()));
+            cout << "Withdrawal successful! New balance: $" << fixed << setprecision(2) << accounts.at(accNum).getBalance() << endl;
+        }
+    }
+
+    void performTransfer() {
+        cout << "\n--- Perform Fund Transfer ---\n";
+        string sourceAccNum = getValidatedStringInput("Enter source Account Number: ");
+        string destAccNum = getValidatedStringInput("Enter destination Account Number: ");
+        double amount = getValidatedDoubleInput("Enter amount to transfer: $");
+
+        if (sourceAccNum == destAccNum) {
+            cout << "Error: Source and destination accounts cannot be the same.\n";
+            return;
+        }
+
+        if (accounts.find(sourceAccNum) == accounts.end()) {
+            cout << "Error: Source account " << sourceAccNum << " not found.\n";
+            return;
+        }
+        if (accounts.find(destAccNum) == accounts.end()) {
+            cout << "Error: Destination account " << destAccNum << " not found.\n";
+            return;
+        }
+
+        // Perform withdrawal from source
+        if (!accounts.at(sourceAccNum).withdraw(amount)) {
+            return; 
+        }
+
+        // Perform deposit to destination
+        if (accounts.at(destAccNum).deposit(amount)) {
+            transactions.push_back(Transaction(to_string(nextTransactionID++), sourceAccNum, "TransferOut", amount, getCurrentTimestamp(), destAccNum));
+            transactions.push_back(Transaction(to_string(nextTransactionID++), destAccNum, "TransferIn", amount, getCurrentTimestamp(), sourceAccNum));
+
+            cout << "Transfer successful!\n";
+            cout << "Source Account " << sourceAccNum << " new balance: $" << fixed << setprecision(2) << accounts.at(sourceAccNum).getBalance() << endl;
+            cout << "Destination Account " << destAccNum << " new balance: $" << fixed << setprecision(2) << accounts.at(destAccNum).getBalance() << endl;
+        }
+        else {
+            accounts.at(sourceAccNum).deposit(amount); 
+            cout << "Error: Funds could not be transferred to destination account. Transaction rolled back.\n";
+        }
+    }
+
+    void viewTransactions(const string& accNum) const {
+        cout << "\n--- Recent Transactions for Account " << accNum << " ---\n";
+        if (accounts.find(accNum) == accounts.end()) {
+            cout << "Account with number " << accNum << " not found.\n";
+            return;
+        }
+
+        vector<Transaction> accountTransactions;
+        for (const auto& trans : transactions) {
+            if (trans.getAccountNumber() == accNum) {
+                accountTransactions.push_back(trans);
+            }
+        }
+
+        if (accountTransactions.empty()) {
+            cout << "No transactions for this account yet.\n";
+            return;
+        }
+
+        // Display up to 10 most recent transactions
+        int count = 0;
+        for (size_t i = accountTransactions.size() - 1; i != static_cast<size_t>(-1) && count < 10; --i) {
+            accountTransactions[i].display();
+            count++;
+        }
+        if (accountTransactions.size() > 10) {
+            cout << "  ... " << (accountTransactions.size() - 10) << " older transactions not shown.\n";
+        }
+    }
+};
+
+// --- Main Program Loop ---
+int main() {
+    BankingSystem bank; 
+
+    int choice;
+    do {
+        cout << "\n========================================\n";
+        cout << "         Welcome to Bank X System       \n";
+        cout << "========================================\n";
+        cout << "1. Create New Customer\n";
+        cout << "2. View All Customers\n";
+        cout << "3. Create New Account\n";
+        cout << "4. View Customer Accounts\n";
+        cout << "5. View Account Details & Transactions\n";
+        cout << "6. Deposit Funds\n";
+        cout << "7. Withdraw Funds\n";
+        cout << "8. Transfer Funds\n";
+        cout << "9. Exit\n";
+        cout << "Enter your choice: ";
+
+        choice = getValidatedIntInput(""); 
+
+        switch (choice) {
+        case 1: bank.createCustomer(); break;
+        case 2: bank.viewAllCustomers(); break;
+        case 3: bank.createAccount(); break;
+        case 4: {
+            string custID = getValidatedStringInput("Enter Customer ID to view accounts: ");
+            bank.viewCustomerAccounts(custID);
+            break;
+        }
+        case 5: bank.viewAccountDetails(); break;
+        case 6: bank.performDeposit(); break;
+        case 7: bank.performWithdrawal(); break;
+        case 8: bank.performTransfer(); break;
+        case 9: cout << "Thank you for using Bank X System. Goodbye!\n"; break;
+        default: cout << "Invalid choice. Please try again.\n"; break;
+        }
+    } while (choice != 9);
+
+    return 0; 
+}
